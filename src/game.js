@@ -347,11 +347,12 @@ async function moveCoinsAnimated(source, target, count) {
   }
   moving.reverse();
 
+  const targetBaseIndex = target.coins.length;
   const tasks = moving.map((denom, i) => new Promise((resolve) => {
     this.time.delayedCall(i * 45, async () => {
       const originVisual = source.visuals.pop();
       const arcX = target.x + this.slotW / 2;
-      const targetIndex = target.coins.length;
+      const targetIndex = targetBaseIndex + i;
       const destY = target.y + (this.coinRadius + 6) + targetIndex * this.stackStep;
 
       originVisual.setDepth(50);
@@ -403,11 +404,12 @@ async function runDeal() {
     }
 
     let completed = 0;
+    const baseIndex = slot.coins.length;
     for (let i = 0; i < toAdd; i += 1) {
       this.time.delayedCall(i * 45, async () => {
         const spawnX = slot.x + this.slotW / 2 + Phaser.Math.Between(-16, 16);
         const spawnY = slot.y - 34;
-        const index = slot.coins.length;
+        const index = baseIndex + i;
         const targetY = slot.y + (this.coinRadius + 6) + index * this.stackStep;
         const targetX = slot.x + this.slotW / 2;
 

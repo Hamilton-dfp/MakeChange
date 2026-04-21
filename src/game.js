@@ -3,16 +3,33 @@ const GAME_HEIGHT = 960;
 const SLOT_COUNT = 15;
 const UNLOCKED_COUNT = 7;
 const SLOT_CAPACITY = 10;
-const MAX_DENOM = 5;
-const DENOMINATIONS = [1, 2, 3, 4, 5];
+const MAX_DENOM = 15;
+const STARTING_MAX_DEAL_DENOM = 5;
+const DENOMINATIONS = Array.from({ length: MAX_DENOM }, (_, i) => i + 1);
 
-const COIN_COLORS = {
-  1: 0xf2a93b,
-  2: 0x57d39d,
-  3: 0x59b2ff,
-  4: 0xb985ff,
-  5: 0xff6f9d,
+const COIN_COLORS = createDenominationColors();
+
+const SLOT_UNLOCK_COSTS = {
+  7: 5,
+  8: 10,
+  9: 20,
+  10: 30,
+  11: 50,
+  12: 80,
+  13: 130,
+  14: 200,
 };
+
+
+function createDenominationColors() {
+  const colors = {};
+  for (let d = 1; d <= MAX_DENOM; d += 1) {
+    const hue = Math.floor(((d - 1) / MAX_DENOM) * 360);
+    const color = Phaser.Display.Color.HSLToColor(hue / 360, 0.72, 0.58);
+    colors[d] = Phaser.Display.Color.GetColor(color.red, color.green, color.blue);
+  }
+  return colors;
+}
 
 const config = {
   type: Phaser.AUTO,
@@ -38,6 +55,8 @@ function create() {
     selected: null,
     busy: false,
     gameOver: false,
+    won: false,
+    maxDealDenom: STARTING_MAX_DEAL_DENOM,
   };
 
   this.coinRadius = 12;
@@ -57,6 +76,7 @@ function create() {
   createBoard.call(this);
   seedInitialBoard.call(this);
   refreshAllSlots.call(this);
+  refreshHud.call(this);
 }
 
 function drawBackground() {
@@ -173,7 +193,25 @@ function createBoard() {
       bg: slotBg,
       lockLabel,
       layer: coinsLayer,
+      unlockCost: SLOT_UNLOCK_COSTS[i] ?? 0,
+      unlockButton: null,
     };
+
+    if (!unlocked) {
+      const btnY = y + this.slotH - 34;
+      const btnBg = this.add.rectangle(x + this.slotW / 2, btnY, this.slotW - 12, 30, 0x6a4a2a, 0.9)
+        .setStrokeStyle(2, 0xcaa16a)
+        .setInteractive({ useHandCursor: true })
+        .setDepth(16);
+      const btnText = this.add.text(x + this.slotW / 2, btnY, `Unlock ${slot.unlockCost}`, {
+        fontSize: '11px',
+        color: '#fff7d1',
+        stroke: '#000',
+        strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(17);
+      btnBg.on('pointerdown', () => tryUnlockSlot.call(this, slot.id));
+      slot.unlockButton = { bg: btnBg, text: btnText };
+    }
 
     slotBg.on('pointerdown', () => onSlotTapped.call(this, slot.id));
     this.state.slots.push(slot);
@@ -184,7 +222,7 @@ function seedInitialBoard() {
   this.state.slots.forEach((slot) => {
     if (!slot.unlocked) return;
     for (let cycle = 0; cycle < 2; cycle += 1) {
-      const denom = Phaser.Math.RND.pick(DENOMINATIONS);
+      const denom = Phaser.Math.Between(1, STARTING_MAX_DEAL_DENOM);
       const addCount = Phaser.Math.Between(0, 5);
       for (let j = 0; j < addCount && slot.coins.length < SLOT_CAPACITY; j += 1) {
         slot.coins.push(denom);
@@ -198,8 +236,7 @@ async function onSlotTapped(slotId) {
 
   const slot = this.state.slots[slotId];
   if (!slot.unlocked) {
-    pulseSlot.call(this, slot, 0xff3030);
-    this.soundFx.play('invalid');
+    tryUnlockSlot.call(this, slot.id);
     return;
   }
 
@@ -329,7 +366,7 @@ function refreshAllSlots() {
     }
   });
   updateSelectionVisuals.call(this);
-  this.creditText.setText(`Credits: ${this.state.credits}`);
+  refreshHud.call(this);
 }
 
 function tweenPromise(scene, target, props) {
@@ -392,7 +429,7 @@ async function runDeal() {
   const slotPlans = [];
   for (const slot of this.state.slots) {
     if (!slot.unlocked) continue;
-    const denom = Phaser.Math.RND.pick(DENOMINATIONS);
+    const denom = Phaser.Math.Between(1, this.state.maxDealDenom);
     const count = Phaser.Math.Between(0, 3);
     const free = SLOT_CAPACITY - slot.coins.length;
     const toAdd = Math.min(count, free);
@@ -473,9 +510,12 @@ async function resolveAllMerges() {
     slot.visuals = [];
     slot.coins = [];
 
+    this.state.credits += first;
+
     if (first < MAX_DENOM) {
       const nextDenom = first + 1;
       slot.coins.push(nextDenom);
+      this.state.maxDealDenom = Math.max(this.state.maxDealDenom, nextDenom);
       const targetX = slot.x + this.slotW / 2;
       const targetY = slot.y + (this.coinRadius + 6);
       const v = makeCoinVisual(this, nextDenom, targetX, targetY);
@@ -490,16 +530,104 @@ async function resolveAllMerges() {
         duration: 160,
         ease: 'Back.Out',
       });
-    } else {
-      this.state.credits += 1;
-      this.creditText.setText(`Credits: ${this.state.credits}`);
-      pulseSlot.call(this, slot, 0xfff18d);
+
+      if (nextDenom === MAX_DENOM) {
+        this.soundFx.play('merge');
+        refreshHud.call(this);
+        showWin.call(this);
+        return true;
+      }
     }
 
+    pulseSlot.call(this, slot, 0xfff18d);
+    refreshHud.call(this);
     this.soundFx.play('merge');
     return true;
   }
   return false;
+}
+
+
+function canUnlockSlot(slot) {
+  if (slot.unlocked) return false;
+  const prevUnlocked = slot.id === 0 || this.state.slots[slot.id - 1]?.unlocked;
+  if (!prevUnlocked) return false;
+  return this.state.credits >= slot.unlockCost;
+}
+
+function tryUnlockSlot(slotId) {
+  if (this.state.gameOver) return;
+  const slot = this.state.slots[slotId];
+  if (!slot || slot.unlocked) return;
+  const prevUnlocked = slot.id === 0 || this.state.slots[slot.id - 1]?.unlocked;
+  if (!prevUnlocked || this.state.credits < slot.unlockCost) {
+    pulseSlot.call(this, slot, 0xff4040);
+    this.soundFx.play('invalid');
+    return;
+  }
+
+  this.state.credits -= slot.unlockCost;
+  slot.unlocked = true;
+  slot.lockLabel.setVisible(false);
+  if (slot.unlockButton) {
+    slot.unlockButton.bg.destroy();
+    slot.unlockButton.text.destroy();
+    slot.unlockButton = null;
+  }
+  this.soundFx.play('click');
+  refreshHud.call(this);
+}
+
+function refreshHud() {
+  this.creditText.setText(`Credits: ${this.state.credits}`);
+  this.state.slots.forEach((slot) => {
+    if (!slot.unlockButton) return;
+    const enabled = canUnlockSlot.call(this, slot);
+    slot.unlockButton.bg.setFillStyle(enabled ? 0x4ea93a : 0x6a4a2a, 0.95);
+    slot.unlockButton.bg.setStrokeStyle(2, enabled ? 0xcff7b2 : 0xcaa16a);
+    slot.unlockButton.text.setText(`Unlock ${slot.unlockCost}`);
+    slot.unlockButton.text.setColor(enabled ? '#f7ffec' : '#fff7d1');
+  });
+}
+
+function showWin() {
+  if (this.state.won) return;
+  this.state.won = true;
+  this.state.gameOver = true;
+  this.state.selected = null;
+  updateSelectionVisuals.call(this);
+
+  const overlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.58);
+  const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 400, 270, 0x143015, 0.95)
+    .setStrokeStyle(4, 0x9ef28f, 1);
+  this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 66, 'You Win!', {
+    fontSize: '58px',
+    color: '#d6ffd2',
+    fontStyle: 'bold',
+    stroke: '#000000',
+    strokeThickness: 7,
+  }).setOrigin(0.5);
+  this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 4, `Credits: ${this.state.credits}`, {
+    fontSize: '34px',
+    color: '#ffffff',
+    stroke: '#000000',
+    strokeThickness: 6,
+  }).setOrigin(0.5);
+
+  const retryBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 88, 180, 56, 0x50b62c, 1)
+    .setStrokeStyle(3, 0xc9ffa7)
+    .setInteractive({ useHandCursor: true });
+  const retryLabel = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 88, 'Restart', {
+    fontSize: '30px',
+    color: '#fff',
+    stroke: '#000',
+    strokeThickness: 5,
+  }).setOrigin(0.5);
+
+  retryBg.on('pointerdown', () => {
+    overlay.destroy(); panel.destroy(); retryBg.destroy(); retryLabel.destroy();
+    this.scene.restart();
+  });
 }
 
 function pulseSlot(slot, color) {

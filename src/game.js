@@ -40,12 +40,16 @@ function create() {
     gameOver: false,
   };
 
-  this.coinRadius = 20;
-  this.slotW = 88;
-  this.slotH = 320;
-  this.stackStep = 26;
+  this.coinRadius = 12;
+  this.slotW = 78;
+  this.slotH = 188;
+  this.stackStep = 17;
   this.boardRows = 3;
   this.boardCols = 5;
+  this.boardX = 36;
+  this.boardY = 160;
+  this.boardW = GAME_WIDTH - 72;
+  this.boardH = 640;
 
   drawBackground.call(this);
   createAudio.call(this);
@@ -62,9 +66,9 @@ function drawBackground() {
 
   const board = this.add.graphics();
   board.fillStyle(0x8b471f, 1);
-  board.fillRoundedRect(36, 160, GAME_WIDTH - 72, 640, 22);
+  board.fillRoundedRect(this.boardX, this.boardY, this.boardW, this.boardH, 22);
   board.lineStyle(6, 0xc07a41, 0.9);
-  board.strokeRoundedRect(36, 160, GAME_WIDTH - 72, 640, 22);
+  board.strokeRoundedRect(this.boardX, this.boardY, this.boardW, this.boardH, 22);
 }
 
 function createAudio() {
@@ -128,10 +132,12 @@ function createUI() {
 }
 
 function createBoard() {
-  const startX = 72;
-  const startY = 188;
-  const gapX = 92;
-  const gapY = 206;
+  const padX = 26;
+  const padY = 26;
+  const startX = this.boardX + padX;
+  const startY = this.boardY + padY;
+  const gapX = 82;
+  const gapY = 196;
 
   for (let i = 0; i < SLOT_COUNT; i += 1) {
     const row = Math.floor(i / this.boardCols);
@@ -311,7 +317,7 @@ function refreshAllSlots() {
     clearVisuals(slot);
     for (let i = 0; i < slot.coins.length; i += 1) {
       const denom = slot.coins[i];
-      const targetY = slot.y + this.slotH - 28 - i * this.stackStep;
+      const targetY = slot.y + this.slotH - (this.coinRadius + 6) - i * this.stackStep;
       const targetX = slot.x + this.slotW / 2;
       const v = makeCoinVisual(this, denom, targetX, targetY);
       slot.layer.add(v);
@@ -344,7 +350,7 @@ async function moveCoinsAnimated(source, target, count) {
     const originVisual = source.visuals.pop();
     const arcX = target.x + this.slotW / 2;
     const targetIndex = target.coins.length;
-    const destY = target.y + this.slotH - 28 - targetIndex * this.stackStep;
+    const destY = target.y + this.slotH - (this.coinRadius + 6) - targetIndex * this.stackStep;
 
     await tweenPromise(this, originVisual, {
       x: arcX,
@@ -387,7 +393,7 @@ async function runDeal() {
       const spawnX = slot.x + this.slotW / 2 + Phaser.Math.Between(-22, 22);
       const spawnY = slot.y - 40;
       const index = slot.coins.length;
-      const targetY = slot.y + this.slotH - 28 - index * this.stackStep;
+      const targetY = slot.y + this.slotH - (this.coinRadius + 6) - index * this.stackStep;
       const targetX = slot.x + this.slotW / 2;
 
       const v = makeCoinVisual(this, denom, spawnX, spawnY);
@@ -447,7 +453,7 @@ async function resolveAllMerges() {
       const nextDenom = first + 1;
       slot.coins.push(nextDenom);
       const targetX = slot.x + this.slotW / 2;
-      const targetY = slot.y + this.slotH - 28;
+      const targetY = slot.y + this.slotH - (this.coinRadius + 6);
       const v = makeCoinVisual(this, nextDenom, targetX, targetY);
       v.setScale(0.2);
       v.alpha = 0.4;

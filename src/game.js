@@ -161,7 +161,7 @@ function createBoard() {
 
     const slot = {
       id: i,
-      unlocked: i < UNLOCKED_COUNT,
+      unlocked: ((this.boardRows - 1 - row) * this.boardCols + col) < UNLOCKED_COUNT,
       capacity: SLOT_CAPACITY,
       coins: [],
       visuals: [],
@@ -248,9 +248,9 @@ async function onSlotTapped(slotId) {
 
 function getTopGroup(slot) {
   if (!slot.coins.length) return null;
-  const denom = slot.coins[slot.coins.length - 1];
+  const denom = slot.coins[0];
   let count = 0;
-  for (let i = slot.coins.length - 1; i >= 0; i -= 1) {
+  for (let i = 0; i < slot.coins.length; i += 1) {
     if (slot.coins[i] === denom) count += 1;
     else break;
   }
@@ -260,7 +260,7 @@ function getTopGroup(slot) {
 function isMoveValid(source, target, denom) {
   if (!target.unlocked || source.id === target.id || !source.coins.length) return false;
   if (!target.coins.length) return true;
-  return target.coins[target.coins.length - 1] === denom;
+  return target.coins[0] === denom;
 }
 
 function updateSelectionVisuals() {
@@ -278,7 +278,7 @@ function updateSelectionVisuals() {
   const slot = this.state.slots[this.state.selected.slotId];
   slot.bg.setStrokeStyle(5, 0xfff37a, 1);
   const n = Math.min(this.state.selected.count, slot.visuals.length);
-  for (let i = slot.visuals.length - n; i < slot.visuals.length; i += 1) {
+  for (let i = 0; i < n; i += 1) {
     const coin = slot.visuals[i];
     if (!coin) continue;
     coin.y = coin.baseY - 10;
@@ -318,7 +318,7 @@ function refreshAllSlots() {
     clearVisuals(slot);
     for (let i = 0; i < slot.coins.length; i += 1) {
       const denom = slot.coins[i];
-      const targetY = slot.y + this.slotH - (this.coinRadius + 6) - i * this.stackStep;
+      const targetY = slot.y + (this.coinRadius + 6) + i * this.stackStep;
       const targetX = slot.x + this.slotW / 2;
       const v = makeCoinVisual(this, denom, targetX, targetY);
       slot.layer.add(v);
@@ -340,22 +340,31 @@ function tweenPromise(scene, target, props) {
 }
 
 async function moveCoinsAnimated(source, target, count) {
-  const moving = [];
-  for (let i = 0; i < count; i += 1) {
-    moving.push(source.coins.pop());
-  }
-  moving.reverse();
+  const movingDenoms = source.coins.splice(0, count);
+  const movingVisuals = source.visuals.splice(0, count);
 
-  for (let i = 0; i < moving.length; i += 1) {
-    const denom = moving[i];
-    const originVisual = source.visuals.pop();
+  await Promise.all(source.visuals.map((v, idx) => tweenPromise(this, v, {
+    y: source.y + (this.coinRadius + 6) + idx * this.stackStep,
+    duration: 120,
+    ease: 'Cubic.Out',
+  }).then(() => { v.baseY = v.y; })));
+
+  for (let i = 0; i < movingDenoms.length; i += 1) {
+    const denom = movingDenoms[i];
+    const originVisual = movingVisuals[i];
+
+    await Promise.all(target.visuals.map((v, idx) => tweenPromise(this, v, {
+      y: target.y + (this.coinRadius + 6) + (idx + 1) * this.stackStep,
+      duration: 110,
+      ease: 'Cubic.Out',
+    }).then(() => { v.baseY = v.y; })));
+
     const arcX = target.x + this.slotW / 2;
-    const targetIndex = target.coins.length;
-    const destY = target.y + this.slotH - (this.coinRadius + 6) - targetIndex * this.stackStep;
+    const destY = target.y + (this.coinRadius + 6);
 
     await tweenPromise(this, originVisual, {
       x: arcX,
-      y: destY - 15,
+      y: destY - 12,
       duration: 170,
       ease: 'Cubic.Out',
     });
@@ -371,8 +380,8 @@ async function moveCoinsAnimated(source, target, count) {
     originVisual.y = destY;
     originVisual.baseY = destY;
 
-    target.coins.push(denom);
-    target.visuals.push(originVisual);
+    target.coins.unshift(denom);
+    target.visuals.unshift(originVisual);
     this.soundFx.play('move');
 
     await new Promise((r) => this.time.delayedCall(40, r));
@@ -393,7 +402,7 @@ async function runDeal() {
       const spawnX = slot.x + this.slotW / 2 + Phaser.Math.Between(-22, 22);
       const spawnY = slot.y - 40;
       const index = slot.coins.length;
-      const targetY = slot.y + this.slotH - (this.coinRadius + 6) - index * this.stackStep;
+      const targetY = slot.y + (this.coinRadius + 6) + index * this.stackStep;
       const targetX = slot.x + this.slotW / 2;
 
       const v = makeCoinVisual(this, denom, spawnX, spawnY);
@@ -453,7 +462,7 @@ async function resolveAllMerges() {
       const nextDenom = first + 1;
       slot.coins.push(nextDenom);
       const targetX = slot.x + this.slotW / 2;
-      const targetY = slot.y + this.slotH - (this.coinRadius + 6);
+      const targetY = slot.y + (this.coinRadius + 6);
       const v = makeCoinVisual(this, nextDenom, targetX, targetY);
       v.setScale(0.2);
       v.alpha = 0.4;
@@ -503,7 +512,7 @@ function hasAnyValidMove() {
     for (const dst of slots) {
       if (src.id === dst.id) continue;
       if (dst.coins.length >= SLOT_CAPACITY) continue;
-      if (!dst.coins.length || dst.coins[dst.coins.length - 1] === top.denom) {
+      if (!dst.coins.length || dst.coins[0] === top.denom) {
         return true;
       }
     }

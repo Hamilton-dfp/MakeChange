@@ -124,7 +124,7 @@ function createUI() {
 
   this.dealButton = this.add.container(0, 0, [dealBg, dealText]);
   dealBg.on('pointerdown', async () => {
-    if (this.state.busy || this.state.gameOver) return;
+    if (this.state.gameOver) return;
     this.soundFx.play('click');
     await runDeal.call(this);
     checkLoss.call(this);
@@ -158,7 +158,9 @@ function createBoard() {
       strokeThickness: 4,
     }).setOrigin(0.5).setVisible(!unlocked);
 
-    const coinsLayer = this.add.container(0, 0);
+    const coinsLayer = this.add.container(0, 0).setDepth(25);
+    slotBg.setDepth(10);
+    lockLabel.setDepth(15);
 
     const slot = {
       id: i,
@@ -192,7 +194,7 @@ function seedInitialBoard() {
 }
 
 async function onSlotTapped(slotId) {
-  if (this.state.busy || this.state.gameOver) return;
+  if (this.state.gameOver) return;
 
   const slot = this.state.slots[slotId];
   if (!slot.unlocked) {
@@ -233,7 +235,6 @@ async function onSlotTapped(slotId) {
     return;
   }
 
-  this.state.busy = true;
   await moveCoinsAnimated.call(this, source, target, movable);
   this.state.selected = null;
   updateSelectionVisuals.call(this);
@@ -243,7 +244,6 @@ async function onSlotTapped(slotId) {
     merged = await resolveAllMerges.call(this);
   }
 
-  this.state.busy = false;
   checkLoss.call(this);
 }
 
@@ -347,87 +347,106 @@ async function moveCoinsAnimated(source, target, count) {
   }
   moving.reverse();
 
-  for (let i = 0; i < moving.length; i += 1) {
-    const denom = moving[i];
-    const originVisual = source.visuals.pop();
-    const arcX = target.x + this.slotW / 2;
-    const targetIndex = target.coins.length;
-    const destY = target.y + (this.coinRadius + 6) + targetIndex * this.stackStep;
+  const tasks = moving.map((denom, i) => new Promise((resolve) => {
+    this.time.delayedCall(i * 45, async () => {
+      const originVisual = source.visuals.pop();
+      const arcX = target.x + this.slotW / 2;
+      const targetIndex = target.coins.length;
+      const destY = target.y + (this.coinRadius + 6) + targetIndex * this.stackStep;
 
-    await tweenPromise(this, originVisual, {
-      x: arcX,
-      y: destY - 12,
-      duration: 170,
-      ease: 'Cubic.Out',
+      originVisual.setDepth(50);
+      await tweenPromise(this, originVisual, {
+        x: arcX,
+        y: destY - 10,
+        duration: 120,
+        ease: 'Cubic.Out',
+      });
+      await tweenPromise(this, originVisual, {
+        y: destY,
+        duration: 70,
+        ease: 'Quad.Out',
+      });
+
+      source.layer.remove(originVisual);
+      target.layer.add(originVisual);
+      originVisual.setDepth(0);
+      originVisual.x = arcX;
+      originVisual.y = destY;
+      originVisual.baseY = destY;
+
+      target.coins.push(denom);
+      target.visuals.push(originVisual);
+      this.soundFx.play('move');
+      resolve();
     });
-    await tweenPromise(this, originVisual, {
-      y: destY,
-      duration: 90,
-      ease: 'Bounce.Out',
-    });
+  }));
 
-    source.layer.remove(originVisual);
-    target.layer.add(originVisual);
-    originVisual.x = arcX;
-    originVisual.y = destY;
-    originVisual.baseY = destY;
-
-    target.coins.push(denom);
-    target.visuals.push(originVisual);
-    this.soundFx.play('move');
-
-    await new Promise((r) => this.time.delayedCall(40, r));
-  }
+  await Promise.all(tasks);
   this.soundFx.play('place');
 }
 
 async function runDeal() {
-  this.state.busy = true;
+  const slotPlans = [];
   for (const slot of this.state.slots) {
     if (!slot.unlocked) continue;
     const denom = Phaser.Math.RND.pick(DENOMINATIONS);
     const count = Phaser.Math.Between(0, 3);
     const free = SLOT_CAPACITY - slot.coins.length;
     const toAdd = Math.min(count, free);
-
-    for (let i = 0; i < toAdd; i += 1) {
-      const spawnX = slot.x + this.slotW / 2 + Phaser.Math.Between(-22, 22);
-      const spawnY = slot.y - 40;
-      const index = slot.coins.length;
-      const targetY = slot.y + (this.coinRadius + 6) + index * this.stackStep;
-      const targetX = slot.x + this.slotW / 2;
-
-      const v = makeCoinVisual(this, denom, spawnX, spawnY);
-      slot.layer.add(v);
-
-      await tweenPromise(this, v, {
-        x: targetX,
-        y: targetY,
-        duration: 180,
-        ease: 'Cubic.Out',
-      });
-      await tweenPromise(this, v, {
-        y: targetY,
-        duration: 80,
-        ease: 'Bounce.Out',
-      });
-
-      v.x = targetX;
-      v.y = targetY;
-      v.baseY = targetY;
-      slot.coins.push(denom);
-      slot.visuals.push(v);
-      this.soundFx.play('place');
-      await new Promise((r) => this.time.delayedCall(45, r));
-    }
+    slotPlans.push({ slot, denom, toAdd });
   }
+
+  const allTasks = slotPlans.map(({ slot, denom, toAdd }) => new Promise((resolveSlot) => {
+    if (toAdd <= 0) {
+      resolveSlot();
+      return;
+    }
+
+    let completed = 0;
+    for (let i = 0; i < toAdd; i += 1) {
+      this.time.delayedCall(i * 45, async () => {
+        const spawnX = slot.x + this.slotW / 2 + Phaser.Math.Between(-16, 16);
+        const spawnY = slot.y - 34;
+        const index = slot.coins.length;
+        const targetY = slot.y + (this.coinRadius + 6) + index * this.stackStep;
+        const targetX = slot.x + this.slotW / 2;
+
+        const v = makeCoinVisual(this, denom, spawnX, spawnY);
+        v.setDepth(50);
+        slot.layer.add(v);
+
+        await tweenPromise(this, v, {
+          x: targetX,
+          y: targetY,
+          duration: 130,
+          ease: 'Cubic.Out',
+        });
+        await tweenPromise(this, v, {
+          y: targetY,
+          duration: 60,
+          ease: 'Quad.Out',
+        });
+
+        v.setDepth(0);
+        v.x = targetX;
+        v.y = targetY;
+        v.baseY = targetY;
+        slot.coins.push(denom);
+        slot.visuals.push(v);
+        this.soundFx.play('place');
+
+        completed += 1;
+        if (completed === toAdd) resolveSlot();
+      });
+    }
+  }));
+
+  await Promise.all(allTasks);
 
   let merged = true;
   while (merged) {
     merged = await resolveAllMerges.call(this);
   }
-
-  this.state.busy = false;
 }
 
 async function resolveAllMerges() {

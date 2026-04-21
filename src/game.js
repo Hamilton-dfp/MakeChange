@@ -9,16 +9,7 @@ const DENOMINATIONS = Array.from({ length: MAX_DENOM }, (_, i) => i + 1);
 
 const COIN_COLORS = createDenominationColors();
 
-const SLOT_UNLOCK_COSTS = {
-  7: 5,
-  8: 10,
-  9: 20,
-  10: 30,
-  11: 50,
-  12: 80,
-  13: 130,
-  14: 200,
-};
+const SLOT_UNLOCK_COST_BY_ORDER = [5, 10, 20, 30, 50, 80, 130, 200];
 
 
 function createDenominationColors() {
@@ -170,7 +161,8 @@ function createBoard() {
       .setStrokeStyle(2, 0x9f5b31, 0.8)
       .setInteractive({ useHandCursor: true });
 
-    const unlocked = ((this.boardRows - 1 - row) * this.boardCols + col) < UNLOCKED_COUNT;
+    const unlockOrder = ((this.boardRows - 1 - row) * this.boardCols + col);
+    const unlocked = unlockOrder < UNLOCKED_COUNT;
     const lockLabel = this.add.text(x + this.slotW / 2, y + this.slotH / 2, 'LOCKED', {
       fontSize: '18px',
       color: '#ffdd99',
@@ -193,7 +185,7 @@ function createBoard() {
       bg: slotBg,
       lockLabel,
       layer: coinsLayer,
-      unlockCost: SLOT_UNLOCK_COSTS[i] ?? 0,
+      unlockCost: unlocked ? 0 : SLOT_UNLOCK_COST_BY_ORDER[unlockOrder - UNLOCKED_COUNT] ?? 0,
       unlockButton: null,
     };
 

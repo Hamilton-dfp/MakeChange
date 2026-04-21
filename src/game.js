@@ -267,6 +267,7 @@ function isMoveValid(source, target, denom) {
 function updateSelectionVisuals() {
   this.state.slots.forEach((slot) => {
     slot.bg.setStrokeStyle(2, 0x9f5b31, 0.8);
+    slot.visuals = slot.visuals.filter((coin) => coin && coin.active && coin.ring && coin.body);
     slot.visuals.forEach((coin) => {
       coin.y = coin.baseY;
       coin.setScale(1);
@@ -277,6 +278,7 @@ function updateSelectionVisuals() {
 
   if (!this.state.selected) return;
   const slot = this.state.slots[this.state.selected.slotId];
+  if (!slot) return;
   slot.bg.setStrokeStyle(5, 0xfff37a, 1);
   const n = Math.min(this.state.selected.count, slot.visuals.length);
   for (let i = slot.visuals.length - n; i < slot.visuals.length; i += 1) {

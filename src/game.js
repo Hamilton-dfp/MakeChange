@@ -261,9 +261,10 @@ function updateSelectionVisuals() {
   this.state.slots.forEach((slot) => {
     slot.bg.setStrokeStyle(2, 0x9f5b31, 0.8);
     slot.visuals.forEach((coin) => {
-      coin.clearFX();
       coin.y = coin.baseY;
       coin.setScale(1);
+      coin.ring.setFillStyle(0xffffff, 1);
+      coin.body.setStrokeStyle(2, 0xffffff, 0.3);
     });
   });
 
@@ -274,7 +275,8 @@ function updateSelectionVisuals() {
   for (let i = slot.visuals.length - n; i < slot.visuals.length; i += 1) {
     const coin = slot.visuals[i];
     coin.y = coin.baseY - 10;
-    coin.postFX.addGlow(0xffef9f, 0.9, 0, false, 0.25, 10);
+    coin.ring.setFillStyle(0xffef9f, 1);
+    coin.body.setStrokeStyle(4, 0xfff7ba, 1);
   }
 }
 
@@ -293,6 +295,9 @@ function makeCoinVisual(scene, denom, x, y) {
 
   container.add([ring, body, txt]);
   container.baseY = y;
+  container.ring = ring;
+  container.body = body;
+  container.selected = false;
   return container;
 }
 

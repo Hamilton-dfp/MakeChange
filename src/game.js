@@ -277,9 +277,10 @@ function updateSelectionVisuals() {
   if (!this.state.selected) return;
   const slot = this.state.slots[this.state.selected.slotId];
   slot.bg.setStrokeStyle(5, 0xfff37a, 1);
-  const n = this.state.selected.count;
+  const n = Math.min(this.state.selected.count, slot.visuals.length);
   for (let i = slot.visuals.length - n; i < slot.visuals.length; i += 1) {
     const coin = slot.visuals[i];
+    if (!coin) continue;
     coin.y = coin.baseY - 10;
     coin.ring.setFillStyle(0xffef9f, 1);
     coin.body.setStrokeStyle(4, 0xfff7ba, 1);
@@ -377,7 +378,6 @@ async function moveCoinsAnimated(source, target, count) {
     await new Promise((r) => this.time.delayedCall(40, r));
   }
   this.soundFx.play('place');
-  updateSelectionVisuals.call(this);
 }
 
 async function runDeal() {

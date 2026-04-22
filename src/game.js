@@ -421,7 +421,8 @@ async function runDeal() {
   const slotPlans = [];
   for (const slot of this.state.slots) {
     if (!slot.unlocked) continue;
-    const denom = Phaser.Math.Between(1, this.state.maxDealDenom);
+    const maxSpawnDenom = Math.max(1, this.state.maxDealDenom - 1);
+    const denom = Phaser.Math.Between(1, maxSpawnDenom);
     const count = Phaser.Math.Between(0, 3);
     const free = SLOT_CAPACITY - slot.coins.length;
     const toAdd = Math.min(count, free);
